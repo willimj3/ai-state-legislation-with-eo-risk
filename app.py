@@ -1413,6 +1413,13 @@ def main():
     st.title("State AI Legislation Dashboard with Federal Preemption Analysis")
     st.markdown("*Exploring U.S. State-Level AI Legislation and Executive Order Risk*")
 
+    # Prototype warning
+    st.warning("""
+    **Prototype Disclaimer:** This dashboard is a research prototype and may contain errors, omissions, or inaccuracies
+    in bill classifications, risk assessments, or subject area categorizations. Data should be independently verified
+    before use in policy analysis or decision-making. Last updated: December 2025.
+    """)
+
     # Load data
     df = load_data()
 
