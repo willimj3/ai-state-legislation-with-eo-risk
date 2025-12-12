@@ -424,7 +424,7 @@ def render_overview_tab(df, full_df):
             color_discrete_map=SUBJECT_COLORS
         )
         fig.update_layout(showlegend=False, yaxis_title="", height=450)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="overview_subject_bar")
 
     with col2:
         # Quick stats table
@@ -478,7 +478,7 @@ def render_overview_tab(df, full_df):
             margin=dict(l=0, r=0, t=40, b=0),
             height=400
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="overview_map")
 
 # ============================================================================
 # TAB 2: SUBJECT AREAS (NEW - replaces old position)
@@ -561,7 +561,7 @@ def render_all_subjects_view(df):
             barmode='stack'
         )
         fig.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="subj_risk_dist")
 
     with col2:
         # Risk points comparison
@@ -577,7 +577,7 @@ def render_all_subjects_view(df):
             color_continuous_scale='Reds'
         )
         fig.update_layout(yaxis_title="", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="subj_risk_points")
 
     st.markdown("---")
 
@@ -625,7 +625,7 @@ def render_all_subjects_view(df):
             color_discrete_map=SUBJECT_COLORS
         )
         fig.update_xaxes(tickmode='linear', tick0=subject_counts['Year'].min(), dtick=1, tickformat='d')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="subj_trends_line")
 
 
 def render_single_subject_view(df, subject):
@@ -670,7 +670,7 @@ def render_single_subject_view(df, subject):
             color_discrete_sequence=[SUBJECT_COLORS.get(subject, '#3498db')]
         )
         fig.update_layout(yaxis_title="", height=400)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="single_subj_state_bar")
 
     with col2:
         # Risk distribution
@@ -687,7 +687,7 @@ def render_single_subject_view(df, subject):
                 color_discrete_map=RISK_COLORS,
                 hole=0.4
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="single_subj_risk_pie")
         else:
             st.info("No passed bills in this subject area.")
 
@@ -718,31 +718,37 @@ def render_trends_tab(df):
     with col1:
         # Bills by year
         yearly = df.groupby('Year').size().reset_index(name='Count')
-        fig = px.bar(
-            yearly,
-            x='Year',
-            y='Count',
-            title='Bills by Year',
-            color_discrete_sequence=['#3498db']
-        )
-        fig.update_layout(xaxis_title="Year", yaxis_title="Number of Bills")
-        fig.update_xaxes(tickmode='linear', tick0=yearly['Year'].min(), dtick=1, tickformat='d')
-        st.plotly_chart(fig, use_container_width=True)
+        if len(yearly) > 0:
+            fig = px.bar(
+                yearly,
+                x='Year',
+                y='Count',
+                title='Bills by Year',
+                color_discrete_sequence=['#3498db']
+            )
+            fig.update_layout(xaxis_title="Year", yaxis_title="Number of Bills")
+            fig.update_xaxes(tickmode='linear', tick0=yearly['Year'].min(), dtick=1, tickformat='d')
+            st.plotly_chart(fig, use_container_width=True, key="trends_bills_by_year")
+        else:
+            st.info("No data for selected filters.")
 
     with col2:
         # Status distribution by year
         status_yearly = df.groupby(['Year', 'Status_Label']).size().reset_index(name='Count')
-        fig = px.bar(
-            status_yearly,
-            x='Year',
-            y='Count',
-            color='Status_Label',
-            title='Status Distribution by Year',
-            color_discrete_map=STATUS_COLORS,
-            barmode='stack'
-        )
-        fig.update_xaxes(tickmode='linear', tick0=status_yearly['Year'].min(), dtick=1, tickformat='d')
-        st.plotly_chart(fig, use_container_width=True)
+        if len(status_yearly) > 0:
+            fig = px.bar(
+                status_yearly,
+                x='Year',
+                y='Count',
+                color='Status_Label',
+                title='Status Distribution by Year',
+                color_discrete_map=STATUS_COLORS,
+                barmode='stack'
+            )
+            fig.update_xaxes(tickmode='linear', tick0=status_yearly['Year'].min(), dtick=1, tickformat='d')
+            st.plotly_chart(fig, use_container_width=True, key="trends_status_by_year")
+        else:
+            st.info("No data for selected filters.")
 
     st.markdown("---")
 
@@ -764,17 +770,22 @@ def render_trends_tab(df):
             subject_df = subject_df[subject_df['Subject'].isin(top_subjects)]
             subject_counts = subject_df.groupby(['Year', 'Subject']).size().reset_index(name='Count')
 
-            fig = px.line(
-                subject_counts,
-                x='Year',
-                y='Count',
-                color='Subject',
-                title='Top Subject Areas Over Time',
-                markers=True,
-                color_discrete_map=SUBJECT_COLORS
-            )
-            fig.update_xaxes(tickmode='linear', tick0=subject_counts['Year'].min(), dtick=1, tickformat='d')
-            st.plotly_chart(fig, use_container_width=True)
+            if len(subject_counts) > 0:
+                fig = px.line(
+                    subject_counts,
+                    x='Year',
+                    y='Count',
+                    color='Subject',
+                    title='Top Subject Areas Over Time',
+                    markers=True,
+                    color_discrete_map=SUBJECT_COLORS
+                )
+                fig.update_xaxes(tickmode='linear', tick0=subject_counts['Year'].min(), dtick=1, tickformat='d')
+                st.plotly_chart(fig, use_container_width=True, key="trends_subject_over_time")
+            else:
+                st.info("No subject area data for selected filters.")
+        else:
+            st.info("No subject area data for selected filters.")
 
     with col4:
         # Risk trends by year
@@ -783,16 +794,19 @@ def render_trends_tab(df):
         }).reset_index()
         risk_yearly.columns = ['Year', 'Total Risk Points']
 
-        fig = px.line(
-            risk_yearly,
-            x='Year',
-            y='Total Risk Points',
-            title='Total Risk Points by Year (Passed Bills)',
-            markers=True,
-            color_discrete_sequence=['#e74c3c']
-        )
-        fig.update_xaxes(tickmode='linear', tick0=risk_yearly['Year'].min(), dtick=1, tickformat='d')
-        st.plotly_chart(fig, use_container_width=True)
+        if len(risk_yearly) > 0:
+            fig = px.line(
+                risk_yearly,
+                x='Year',
+                y='Total Risk Points',
+                title='Total Risk Points by Year (Passed Bills)',
+                markers=True,
+                color_discrete_sequence=['#e74c3c']
+            )
+            fig.update_xaxes(tickmode='linear', tick0=risk_yearly['Year'].min(), dtick=1, tickformat='d')
+            st.plotly_chart(fig, use_container_width=True, key="trends_risk_by_year")
+        else:
+            st.info("No passed bills for selected filters.")
 
 # ============================================================================
 # TAB 4: STATE COMPARISON
@@ -831,7 +845,7 @@ def render_state_comparison_tab(df):
             color_discrete_sequence=['#3498db']
         )
         fig.update_layout(yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="state_comp_bills")
 
     with col2:
         # Risk score comparison
@@ -853,7 +867,7 @@ def render_state_comparison_tab(df):
         )
         fig.update_traces(marker_color=colors)
         fig.update_layout(yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="state_comp_risk")
 
     st.markdown("---")
 
@@ -887,7 +901,7 @@ def render_state_comparison_tab(df):
             color_discrete_map=SUBJECT_COLORS,
             barmode='stack'
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="state_comp_subj")
 
 # ============================================================================
 # TAB 5: FEDERAL PREEMPTION RISK
@@ -990,7 +1004,7 @@ def render_eo_risk_tab(df):
             yaxis_title='',
             height=450
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="eo_subj_risk_bar")
 
     with col2:
         # Risk concentration
@@ -1090,7 +1104,7 @@ def render_eo_risk_tab(df):
                 yaxis_title='',
                 height=max(400, len(state_risk) * 25)
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="eo_state_risk_bar")
 
     with col2:
         risk_dist = passed_df['EO_Risk_Level'].value_counts().reset_index()
@@ -1106,7 +1120,7 @@ def render_eo_risk_tab(df):
             title='Overall Risk Distribution'
         )
         fig.update_layout(height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="eo_risk_pie")
 
     st.markdown("---")
 
@@ -1284,7 +1298,7 @@ def render_categories_tab(df):
             color_discrete_map=color_map
         )
         fig.update_layout(yaxis_title="", height=600)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="cat_freq_bar")
 
     with col2:
         type_counts = cat_counts.groupby('Type')['Count'].sum().reset_index()
@@ -1297,7 +1311,7 @@ def render_categories_tab(df):
             color='Type',
             color_discrete_map=color_map
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="cat_type_pie")
 
         st.markdown("""
         **Targeted categories** are the regulatory mechanisms the EO specifically criticizes.
