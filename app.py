@@ -286,6 +286,13 @@ def apply_filters(df):
     show_targeted = st.sidebar.checkbox("Show only targeted bills", value=False)
     show_protected = st.sidebar.checkbox("Show only protected bills", value=False)
 
+    # General/Other filter with explanation
+    exclude_low_risk_other = st.sidebar.checkbox(
+        "Exclude low-risk General/Other bills",
+        value=False,
+        help="Remove bills categorized as General/Other with Low Risk from the analysis. These are often resolutions, commendations, or bills that mention AI incidentally."
+    )
+
     st.sidebar.markdown("---")
 
     # Search filter
@@ -321,6 +328,14 @@ def apply_filters(df):
 
     if show_protected:
         filtered_df = filtered_df[filtered_df['EO_Has_Protection'] == 1]
+
+    if exclude_low_risk_other:
+        # Exclude bills that are ONLY in General/Other AND are Low Risk (passed) or Low Exposure (pending)
+        low_risk_other_mask = (
+            (filtered_df['Subject_Areas'] == 'General/Other') &
+            (filtered_df['EO_Risk_Level'].isin(['Low Risk', 'Pending - Low Exposure']))
+        )
+        filtered_df = filtered_df[~low_risk_other_mask]
 
     if search_term:
         filtered_df = filtered_df[
@@ -477,6 +492,28 @@ def render_subject_areas_tab(df):
     is distributed across subject areas helps identify where states are focusing their regulatory efforts
     and which domains face the greatest preemption risk.
     """)
+
+    # Explainer about General/Other category
+    with st.expander("About the General/Other Category", expanded=False):
+        st.markdown("""
+        **Why is General/Other so large?**
+
+        The General/Other category contains **427 bills** that don't fit neatly into specific policy domains. This includes:
+
+        - **Resolutions and commendations** (e.g., recognizing AI research centers, honoring tech leaders)
+        - **Omnibus bills** that mention AI among many other topics
+        - **Definitional bills** that establish legal definitions without specific regulations
+        - **Study and reporting requirements** that don't create substantive AI rules
+        - **Bills with incidental AI mentions** (e.g., general technology appropriations)
+
+        **Why does this matter for risk analysis?**
+
+        Most General/Other bills (92 of 127 passed) are **Low Risk** because they don't contain the regulatory provisions
+        the Executive Order targets. Including them can dilute the risk picture.
+
+        **Recommendation:** Use the sidebar filter "Exclude low-risk General/Other bills" to focus your analysis
+        on substantive AI regulatory legislation.
+        """)
 
     st.markdown("---")
 
@@ -1276,24 +1313,46 @@ def render_bill_explorer_tab(df):
 
     st.subheader("Bill Explorer")
 
-    # Filters row
+    # Initialize session state for explorer filters
+    if 'explorer_search' not in st.session_state:
+        st.session_state.explorer_search = ""
+    if 'explorer_subject' not in st.session_state:
+        st.session_state.explorer_subject = 'All'
+    if 'explorer_risk' not in st.session_state:
+        st.session_state.explorer_risk = 'All'
+
+    # Filters row with session state keys
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        search = st.text_input("Search titles:", placeholder="Enter keywords...")
+        search = st.text_input(
+            "Search titles:",
+            value=st.session_state.explorer_search,
+            placeholder="Enter keywords...",
+            key="explorer_search_input"
+        )
+        st.session_state.explorer_search = search
 
     with col2:
+        subject_options = ['All'] + SUBJECT_AREAS
         explorer_subject = st.selectbox(
             "Subject area:",
-            options=['All'] + SUBJECT_AREAS
+            options=subject_options,
+            index=subject_options.index(st.session_state.explorer_subject) if st.session_state.explorer_subject in subject_options else 0,
+            key="explorer_subject_select"
         )
+        st.session_state.explorer_subject = explorer_subject
 
     with col3:
+        risk_options = ['All', 'High Risk', 'Moderate Risk', 'Low Risk',
+                     'Pending - High Exposure', 'Pending - Some Exposure', 'Pending - Low Exposure']
         explorer_risk = st.selectbox(
             "Risk level:",
-            options=['All', 'High Risk', 'Moderate Risk', 'Low Risk',
-                     'Pending - High Exposure', 'Pending - Some Exposure', 'Pending - Low Exposure']
+            options=risk_options,
+            index=risk_options.index(st.session_state.explorer_risk) if st.session_state.explorer_risk in risk_options else 0,
+            key="explorer_risk_select"
         )
+        st.session_state.explorer_risk = explorer_risk
 
     display_df = df.copy()
 
