@@ -549,6 +549,11 @@ def render_all_subjects_view(df):
 
     subject_stats = get_subject_area_stats(df)
 
+    # Check if we have any data
+    if len(subject_stats) == 0:
+        st.info("No bills match the current filter criteria.")
+        return
+
     # Risk by subject area
     st.subheader("Risk Analysis by Subject Area")
 
@@ -653,6 +658,11 @@ def render_single_subject_view(df, subject):
     subj_df = df[mask]
     passed_df = subj_df[subj_df['Status'] == 4]
 
+    # Check for empty data
+    if len(subj_df) == 0:
+        st.info(f"No {subject} bills match the current filter criteria.")
+        return
+
     # Header metrics
     col1, col2, col3, col4 = st.columns(4)
 
@@ -675,17 +685,20 @@ def render_single_subject_view(df, subject):
         # State breakdown
         st.subheader(f"{subject} Bills by State")
         state_counts = subj_df.groupby('State_Name').size().reset_index(name='Count')
-        state_counts = state_counts.sort_values('Count', ascending=True).tail(15)
+        if len(state_counts) > 0:
+            state_counts = state_counts.sort_values('Count', ascending=True).tail(15)
 
-        fig = px.bar(
-            state_counts,
-            x='Count',
-            y='State_Name',
-            orientation='h',
-            color_discrete_sequence=[SUBJECT_COLORS.get(subject, '#3498db')]
-        )
-        fig.update_layout(yaxis_title="", height=400)
-        st.plotly_chart(fig, use_container_width=True, key="single_subj_state_bar")
+            fig = px.bar(
+                state_counts,
+                x='Count',
+                y='State_Name',
+                orientation='h',
+                color_discrete_sequence=[SUBJECT_COLORS.get(subject, '#3498db')]
+            )
+            fig.update_layout(yaxis_title="", height=400)
+            st.plotly_chart(fig, use_container_width=True, key="single_subj_state_bar")
+        else:
+            st.info("No state data available.")
 
     with col2:
         # Risk distribution
@@ -996,6 +1009,11 @@ def render_eo_risk_tab(df):
     """)
 
     subject_stats = get_subject_area_stats(df)
+
+    # Check for empty data
+    if len(subject_stats) == 0:
+        st.info("No bills match the current filter criteria.")
+        return
 
     col1, col2 = st.columns(2)
 
