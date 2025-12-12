@@ -388,12 +388,12 @@ def render_overview_tab(df, full_df):
         st.metric("Passage Rate", f"{rate:.1f}%")
 
     with col3:
-        if len(df) > 0:
+        if len(df) > 0 and len(df['State_Name'].dropna()) > 0:
             most_active = df['State_Name'].value_counts().idxmax()
             count = df['State_Name'].value_counts().max()
             st.metric("Most Active State", most_active, f"{count} bills")
         else:
-            st.metric("Most Active State", "N/A")
+            st.metric("Most Active State", "N/A", "No data")
 
     with col4:
         high_risk = len(df[(df['Status'] == 4) & (df['EO_Risk_Level'] == 'High Risk')])
@@ -409,76 +409,91 @@ def render_overview_tab(df, full_df):
     st.subheader("Bills by Subject Area")
 
     subject_stats = get_subject_area_stats(df)
-    subject_stats = subject_stats.sort_values('Total Bills', ascending=True)
 
-    col1, col2 = st.columns([2, 1])
+    if len(subject_stats) > 0:
+        subject_stats = subject_stats.sort_values('Total Bills', ascending=True)
 
-    with col1:
-        fig = px.bar(
-            subject_stats,
-            x='Total Bills',
-            y='Subject Area',
-            orientation='h',
-            title='Legislative Activity by Subject Area',
-            color='Subject Area',
-            color_discrete_map=SUBJECT_COLORS
-        )
-        fig.update_layout(showlegend=False, yaxis_title="", height=450)
-        st.plotly_chart(fig, use_container_width=True, key="overview_subject_bar")
+        col1, col2 = st.columns([2, 1])
 
-    with col2:
-        # Quick stats table
-        st.markdown("**Quick Stats**")
-        quick_stats = subject_stats[['Subject Area', 'Total Bills', 'Passed Bills', 'Total Risk Points']].copy()
-        quick_stats = quick_stats.sort_values('Total Bills', ascending=False)
-        st.dataframe(quick_stats, hide_index=True, use_container_width=True, height=400)
+        with col1:
+            fig = px.bar(
+                subject_stats,
+                x='Total Bills',
+                y='Subject Area',
+                orientation='h',
+                title='Legislative Activity by Subject Area',
+                color='Subject Area',
+                color_discrete_map=SUBJECT_COLORS
+            )
+            fig.update_layout(showlegend=False, yaxis_title="", height=450)
+            st.plotly_chart(fig, use_container_width=True, key="overview_subject_bar")
+
+        with col2:
+            # Quick stats table
+            st.markdown("**Quick Stats**")
+            quick_stats = subject_stats[['Subject Area', 'Total Bills', 'Passed Bills', 'Total Risk Points']].copy()
+            quick_stats = quick_stats.sort_values('Total Bills', ascending=False)
+            st.dataframe(quick_stats, hide_index=True, use_container_width=True, height=400)
+    else:
+        st.info("No bills match the current filter criteria.")
 
     st.markdown("---")
 
     # Map section
-    col_map, col_toggle = st.columns([4, 1])
+    if len(df) > 0:
+        col_map, col_toggle = st.columns([4, 1])
 
-    with col_toggle:
-        map_mode = st.radio(
-            "Color map by:",
-            ["Total Bills", "Risk Score"],
-            index=0
-        )
-
-    with col_map:
-        if map_mode == "Total Bills":
-            state_data = df.groupby('State').size().reset_index(name='Count')
-            fig = px.choropleth(
-                state_data,
-                locations='State',
-                locationmode='USA-states',
-                color='Count',
-                scope='usa',
-                color_continuous_scale='Blues',
-                title='Bills by State'
-            )
-        else:
-            # Risk score map (passed bills only)
-            state_risk = df[df['Status'] == 4].groupby('State').agg({
-                'State_Total_Risk_Points': 'first'
-            }).reset_index()
-            state_risk.columns = ['State', 'Risk_Score']
-            fig = px.choropleth(
-                state_risk,
-                locations='State',
-                locationmode='USA-states',
-                color='Risk_Score',
-                scope='usa',
-                color_continuous_scale='Reds',
-                title='State AI Law Risk Exposure (Passed Bills)'
+        with col_toggle:
+            map_mode = st.radio(
+                "Color map by:",
+                ["Total Bills", "Risk Score"],
+                index=0
             )
 
-        fig.update_layout(
-            geo=dict(bgcolor='rgba(0,0,0,0)'),
-            margin=dict(l=0, r=0, t=40, b=0),
-            height=400
-        )
-        st.plotly_chart(fig, use_container_width=True, key="overview_map")
+        with col_map:
+            if map_mode == "Total Bills":
+                state_data = df.groupby('State').size().reset_index(name='Count')
+                fig = px.choropleth(
+                    state_data,
+                    locations='State',
+                    locationmode='USA-states',
+                    color='Count',
+                    scope='usa',
+                    color_continuous_scale='Blues',
+                    title='Bills by State'
+                )
+            else:
+                # Risk score map (passed bills only)
+                passed_for_map = df[df['Status'] == 4]
+                if len(passed_for_map) > 0:
+                    state_risk = passed_for_map.groupby('State').agg({
+                        'State_Total_Risk_Points': 'first'
+                    }).reset_index()
+                    state_risk.columns = ['State', 'Risk_Score']
+                    fig = px.choropleth(
+                        state_risk,
+                        locations='State',
+                        locationmode='USA-states',
+                        color='Risk_Score',
+                        scope='usa',
+                        color_continuous_scale='Reds',
+                        title='State AI Law Risk Exposure (Passed Bills)'
+                    )
+                else:
+                    # Fallback to empty map
+                    fig = px.choropleth(
+                        locations=[],
+                        locationmode='USA-states',
+                        scope='usa',
+                        title='No passed bills for selected filters'
+                    )
+
+            fig.update_layout(
+                geo=dict(bgcolor='rgba(0,0,0,0)'),
+                margin=dict(l=0, r=0, t=40, b=0),
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True, key="overview_map")
 
 # ============================================================================
 # TAB 2: SUBJECT AREAS (NEW - replaces old position)
