@@ -345,13 +345,28 @@ def apply_filters(df):
     return filtered_df
 
 # ============================================================================
-# TAB 1: OVERVIEW
+# TAB: KEY FINDINGS (Narrative Overview)
 # ============================================================================
 
-def render_overview_tab(df, full_df):
-    """Render the Overview tab with key metrics and map."""
+def render_key_findings_tab(df):
+    """Render the Key Findings narrative tab with live data visualizations."""
 
-    # Executive Order info box - prominent placement
+    # Calculate key statistics from data
+    passed = df[df['Status'] == 4]
+    high_risk = passed[passed['EO_Risk_Level'] == 'High Risk']
+    mod_risk = passed[passed['EO_Risk_Level'] == 'Moderate Risk']
+    pending_high = df[df['EO_Risk_Level'] == 'Pending - High Exposure']
+
+    total_at_risk = len(high_risk) + len(mod_risk)
+
+    # State risk rankings
+    state_risk = df.groupby('State_Name')['State_Total_Risk_Points'].first().sort_values(ascending=False)
+
+    # Header
+    st.markdown("# The AI Preemption Map")
+    st.markdown("### Which States Are in the Crosshairs of the Executive Order?")
+
+    # Executive Order info box
     st.info("""
     **About the December 2025 Executive Order**
 
@@ -366,137 +381,402 @@ def render_overview_tab(df, full_df):
     [Read the full Executive Order](https://www.whitehouse.gov/presidential-actions/2025/12/eliminating-state-law-obstruction-of-national-artificial-intelligence-policy/)
     """)
 
-    # Brief intro
-    st.markdown("""
-    This dashboard tracks **{:,}** AI-related bills across U.S. states, organized by **subject area**.
-    Use the sidebar filters to explore specific topics, states, or risk levels.
-    The **Federal Preemption Risk** tab analyzes which subject areas face the greatest risk from the Executive Order.
-    """.format(len(full_df)))
-
+    # Key stats callout
     st.markdown("---")
 
-    # Key metrics row
-    col1, col2, col3, col4, col5 = st.columns(5)
-
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total Bills", len(df))
-
+        st.metric("Total Bills Analyzed", f"{len(df):,}")
     with col2:
-        passed = len(df[df['Status'] == 4])
-        total = len(df)
-        rate = (passed / total * 100) if total > 0 else 0
-        st.metric("Passage Rate", f"{rate:.1f}%")
-
+        st.metric("Passed Laws at Risk", f"{total_at_risk}",
+                  help="High Risk + Moderate Risk passed bills")
     with col3:
-        if len(df) > 0 and len(df['State_Name'].dropna()) > 0:
-            most_active = df['State_Name'].value_counts().idxmax()
-            count = df['State_Name'].value_counts().max()
-            st.metric("Most Active State", most_active, f"{count} bills")
-        else:
-            st.metric("Most Active State", "N/A", "No data")
-
+        st.metric("High Risk Laws", f"{len(high_risk)}")
     with col4:
-        high_risk = len(df[(df['Status'] == 4) & (df['EO_Risk_Level'] == 'High Risk')])
-        st.metric("Bills at High Risk", high_risk, help="Passed bills with High Risk level")
-
-    with col5:
-        protected = len(df[(df['Status'] == 4) & (df['EO_Has_Protection'] == 1)])
-        st.metric("Bills with Protection", protected, help="Passed bills in protected categories")
+        st.metric("Pending High Exposure", f"{len(pending_high)}")
 
     st.markdown("---")
 
-    # Subject Area Overview
-    st.subheader("Bills by Subject Area")
+    # Section 1: The Numbers
+    st.markdown("## The Numbers Tell the Story")
 
-    subject_stats = get_subject_area_stats(df)
+    st.markdown(f"""
+    Of the **{len(passed)} AI-related bills** that have passed into law since 2023:
 
-    if len(subject_stats) > 0:
-        subject_stats = subject_stats.sort_values('Total Bills', ascending=True)
+    - **{len(high_risk)} are classified as "High Risk"**—containing two or more provisions the EO explicitly targets
+    - **{len(mod_risk)} are "Moderate Risk"**—with at least one targeted provision
+    - **{len(passed) - len(high_risk) - len(mod_risk)} are "Low Risk"**—either lacking targeted provisions or falling under protected carve-outs
+    """)
 
-        col1, col2 = st.columns([2, 1])
+    # Risk breakdown donut chart
+    risk_counts = passed['EO_Risk_Level'].value_counts()
+    fig_risk = px.pie(
+        values=risk_counts.values,
+        names=risk_counts.index,
+        hole=0.4,
+        color=risk_counts.index,
+        color_discrete_map=RISK_COLORS,
+        title="Risk Distribution of Passed AI Laws"
+    )
+    fig_risk.update_layout(height=350)
+    st.plotly_chart(fig_risk, use_container_width=True, key="findings_risk_pie")
 
-        with col1:
-            fig = px.bar(
-                subject_stats,
-                x='Total Bills',
-                y='Subject Area',
-                orientation='h',
-                title='Legislative Activity by Subject Area',
-                color='Subject Area',
-                color_discrete_map=SUBJECT_COLORS
-            )
-            fig.update_layout(showlegend=False, yaxis_title="", height=450)
-            st.plotly_chart(fig, use_container_width=True, key="overview_subject_bar")
+    # Targeted categories
+    nondiscrim_count = int(passed['EO_Targeted_Nondiscrimination'].sum())
+    notice_count = int(passed['EO_Targeted_Notice'].sum())
+    assess_count = int(passed['EO_Targeted_Assessments'].sum())
 
-        with col2:
-            # Quick stats table
-            st.markdown("**Quick Stats**")
-            quick_stats = subject_stats[['Subject Area', 'Total Bills', 'Passed Bills', 'Total Risk Points']].copy()
-            quick_stats = quick_stats.sort_values('Total Bills', ascending=False)
-            st.dataframe(quick_stats, hide_index=True, use_container_width=True, height=400)
-    else:
-        st.info("No bills match the current filter criteria.")
+    st.markdown(f"""
+    The executive order specifically targets three categories of state AI regulation:
+
+    1. **Nondiscrimination requirements** ({nondiscrim_count} passed bills)
+    2. **Notice and disclosure mandates** ({notice_count} passed bills)
+    3. **Impact assessment requirements** ({assess_count} passed bills)
+    """)
+
+    # Protected categories
+    child_safety = int(passed['EO_Protected_ChildSafety'].sum())
+    gov_proc = int(passed['EO_Protected_GovProcurement'].sum())
+    infra = int(passed['EO_Protected_Infrastructure'].sum())
+
+    st.markdown(f"""
+    Meanwhile, the order carves out protections for laws addressing **child safety** ({child_safety} bills),
+    **government procurement** ({gov_proc} bills), and **data center infrastructure** ({infra} bills)—areas
+    where states retain regulatory authority.
+    """)
 
     st.markdown("---")
 
-    # Map section
-    if len(df) > 0:
-        col_map, col_toggle = st.columns([4, 1])
+    # Section 2: State Rankings
+    st.markdown("## California Leads in Exposure—Not Colorado")
 
-        with col_toggle:
-            map_mode = st.radio(
-                "Color map by:",
-                ["Total Bills", "Risk Score"],
-                index=0
+    top_state = state_risk.index[0]
+    top_points = int(state_risk.iloc[0])
+    co_rank = list(state_risk.index).index('Colorado') + 1 if 'Colorado' in state_risk.index else 'N/A'
+    co_points = int(state_risk.get('Colorado', 0))
+
+    st.markdown(f"""
+    While the executive order named Colorado, it's actually **{top_state} that faces the greatest
+    cumulative risk**, with {top_points} total risk points across its passed legislation.
+
+    Colorado, despite being singled out, ranks **#{co_rank}** with {co_points} risk points.
+    """)
+
+    # Top 10 states bar chart
+    top_10_states = state_risk.head(10).reset_index()
+    top_10_states.columns = ['State', 'Risk Points']
+
+    # Color Colorado differently
+    colors = ['#e74c3c' if state == 'Colorado' else '#3498db' for state in top_10_states['State']]
+
+    fig_states = px.bar(
+        top_10_states,
+        x='Risk Points',
+        y='State',
+        orientation='h',
+        title="Top 10 States by Risk Exposure",
+        color='State',
+        color_discrete_sequence=colors
+    )
+    fig_states.update_layout(
+        yaxis={'categoryorder': 'total ascending'},
+        showlegend=False,
+        height=400
+    )
+    # Add annotation for Colorado
+    if 'Colorado' in top_10_states['State'].values:
+        fig_states.add_annotation(
+            x=co_points + 1,
+            y='Colorado',
+            text="Named in EO",
+            showarrow=True,
+            arrowhead=2,
+            ax=40,
+            ay=0
+        )
+    st.plotly_chart(fig_states, use_container_width=True, key="findings_state_bar")
+
+    # High risk bills by state
+    high_risk_by_state = high_risk.groupby('State_Name').size().sort_values(ascending=False)
+
+    st.markdown(f"""
+    **{high_risk_by_state.index[0] if len(high_risk_by_state) > 0 else 'N/A'}** stands out with the most
+    high-risk individual bills ({int(high_risk_by_state.iloc[0]) if len(high_risk_by_state) > 0 else 0}),
+    primarily in healthcare—a sector where AI transparency has become a pressing concern.
+    """)
+
+    # US Map visualization
+    st.markdown("### Geographic Distribution")
+
+    col_map, col_toggle = st.columns([4, 1])
+
+    with col_toggle:
+        map_mode = st.radio(
+            "Color map by:",
+            ["Total Bills", "Risk Score"],
+            index=1,
+            key="findings_map_toggle"
+        )
+
+    with col_map:
+        if map_mode == "Total Bills":
+            state_data = df.groupby('State').size().reset_index(name='Count')
+            fig_map = px.choropleth(
+                state_data,
+                locations='State',
+                locationmode='USA-states',
+                color='Count',
+                scope='usa',
+                color_continuous_scale='Blues',
+                title='AI Bills by State'
             )
-
-        with col_map:
-            if map_mode == "Total Bills":
-                state_data = df.groupby('State').size().reset_index(name='Count')
-                fig = px.choropleth(
-                    state_data,
+        else:
+            # Risk score map (passed bills only)
+            if len(passed) > 0:
+                state_risk_map = passed.groupby('State').agg({
+                    'State_Total_Risk_Points': 'first'
+                }).reset_index()
+                state_risk_map.columns = ['State', 'Risk_Score']
+                fig_map = px.choropleth(
+                    state_risk_map,
                     locations='State',
                     locationmode='USA-states',
-                    color='Count',
+                    color='Risk_Score',
                     scope='usa',
-                    color_continuous_scale='Blues',
-                    title='Bills by State'
+                    color_continuous_scale='Reds',
+                    title='State AI Law Risk Exposure'
                 )
             else:
-                # Risk score map (passed bills only)
-                passed_for_map = df[df['Status'] == 4]
-                if len(passed_for_map) > 0:
-                    state_risk = passed_for_map.groupby('State').agg({
-                        'State_Total_Risk_Points': 'first'
-                    }).reset_index()
-                    state_risk.columns = ['State', 'Risk_Score']
-                    fig = px.choropleth(
-                        state_risk,
-                        locations='State',
-                        locationmode='USA-states',
-                        color='Risk_Score',
-                        scope='usa',
-                        color_continuous_scale='Reds',
-                        title='State AI Law Risk Exposure (Passed Bills)'
-                    )
-                else:
-                    # Fallback to empty map
-                    fig = px.choropleth(
-                        locations=[],
-                        locationmode='USA-states',
-                        scope='usa',
-                        title='No passed bills for selected filters'
-                    )
+                fig_map = px.choropleth(
+                    locations=[],
+                    locationmode='USA-states',
+                    scope='usa',
+                    title='No passed bills for selected filters'
+                )
 
-            fig.update_layout(
-                geo=dict(bgcolor='rgba(0,0,0,0)'),
-                margin=dict(l=0, r=0, t=40, b=0),
-                height=400
-            )
-            st.plotly_chart(fig, use_container_width=True, key="overview_map")
+        fig_map.update_layout(
+            geo=dict(bgcolor='rgba(0,0,0,0)'),
+            margin=dict(l=0, r=0, t=40, b=0),
+            height=400
+        )
+        st.plotly_chart(fig_map, use_container_width=True, key="findings_map")
+
+    st.markdown("---")
+
+    # Section 3: Healthcare Focus
+    st.markdown("## Healthcare Is Ground Zero")
+
+    # Subject areas of high risk bills
+    high_risk_subjects = high_risk['Subject_Areas'].value_counts()
+
+    st.markdown("""
+    The subject areas most threatened by the executive order reveal what's really at stake.
+    Healthcare AI legislation—laws requiring insurers to disclose when algorithms deny claims,
+    or mandating human review of AI-driven medical decisions—represents a significant category
+    of high-risk legislation.
+    """)
+
+    # Subject area breakdown for high risk
+    if len(high_risk_subjects) > 0:
+        fig_subjects = px.bar(
+            x=high_risk_subjects.head(8).values,
+            y=high_risk_subjects.head(8).index,
+            orientation='h',
+            title="High-Risk Bills by Subject Area",
+            labels={'x': 'Number of Bills', 'y': 'Subject Area'},
+            color=high_risk_subjects.head(8).index,
+            color_discrete_map=SUBJECT_COLORS
+        )
+        fig_subjects.update_layout(
+            yaxis={'categoryorder': 'total ascending'},
+            showlegend=False,
+            height=350
+        )
+        st.plotly_chart(fig_subjects, use_container_width=True, key="findings_subject_bar")
+
+    st.markdown("""
+    States like Maryland, Virginia, and Indiana have passed laws requiring transparency in how
+    health insurers use AI for utilization review and prior authorization. These laws emerged
+    in response to documented cases of AI systems denying medically necessary care. **Under the
+    executive order, they may now face federal challenge.**
+    """)
+
+    st.markdown("---")
+
+    # Section 4: Political analysis
+    st.markdown("## This Isn't a Red State vs. Blue State Issue")
+
+    # Political leaning analysis
+    red_states = ['AL', 'AK', 'AR', 'FL', 'ID', 'IN', 'IA', 'KS', 'KY', 'LA', 'MS', 'MO', 'MT', 'NE', 'NC', 'ND', 'OH', 'OK', 'SC', 'SD', 'TN', 'TX', 'UT', 'WV', 'WY']
+    blue_states = ['CA', 'CO', 'CT', 'DE', 'HI', 'IL', 'ME', 'MD', 'MA', 'MI', 'MN', 'NV', 'NH', 'NJ', 'NM', 'NY', 'OR', 'PA', 'RI', 'VT', 'VA', 'WA', 'WI']
+
+    high_risk_red = len(high_risk[high_risk['State'].isin(red_states)])
+    high_risk_blue = len(high_risk[high_risk['State'].isin(blue_states)])
+
+    st.markdown(f"""
+    The data complicates any simple partisan narrative. While blue states have passed more high-risk
+    legislation overall ({high_risk_blue} bills vs. {high_risk_red} in red states), the margin isn't
+    overwhelming—and several traditionally red states rank among the most exposed.
+
+    **Texas**, **Utah**, **Louisiana**, and **Montana** have all passed legislation that could face
+    federal scrutiny. These states have been active in AI governance not because of partisan ideology,
+    but because AI touches issues their constituents care about: healthcare access, consumer protection,
+    and government accountability.
+    """)
+
+    # Side by side comparison
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("High-Risk Bills in Blue States", high_risk_blue)
+    with col2:
+        st.metric("High-Risk Bills in Red States", high_risk_red)
+
+    st.markdown("---")
+
+    # Section 5: Pipeline
+    st.markdown("## The Pipeline Problem")
+
+    st.markdown(f"""
+    Beyond what's already law, **{len(pending_high)} pending bills carry "high exposure"** to the
+    executive order's framework.
+    """)
+
+    # Pending high exposure by state
+    pending_by_state = pending_high.groupby('State_Name').size().sort_values(ascending=False).head(10)
+
+    if len(pending_by_state) > 0:
+        top_pending_state = pending_by_state.index[0]
+        top_pending_count = int(pending_by_state.iloc[0])
+
+        st.markdown(f"""
+        **{top_pending_state}** alone has {top_pending_count} such bills in its legislative pipeline.
+
+        These bills—many addressing AI in hiring, housing, and lending decisions—may never become law
+        if legislators anticipate federal preemption. **The chilling effect could extend far beyond
+        the bills that are formally challenged.**
+        """)
+
+        fig_pending = px.bar(
+            x=pending_by_state.values,
+            y=pending_by_state.index,
+            orientation='h',
+            title="States with Most High-Exposure Pending Bills",
+            labels={'x': 'Number of Bills', 'y': 'State'}
+        )
+        fig_pending.update_layout(
+            yaxis={'categoryorder': 'total ascending'},
+            height=350
+        )
+        st.plotly_chart(fig_pending, use_container_width=True, key="findings_pending_bar")
+
+    st.markdown("---")
+
+    # Section 6: What's Protected
+    st.markdown("## What the Order Actually Protects")
+
+    st.markdown(f"""
+    The executive order isn't a blanket prohibition on state AI regulation. It explicitly carves out:
+
+    - **Child safety laws** ({child_safety} passed bills protected): Legislation addressing AI-generated
+      child sexual abuse material, age verification, and minors' online safety
+
+    - **Government procurement rules** ({gov_proc} passed bills): Requirements for how state agencies
+      evaluate and acquire AI systems
+
+    - **Data center and infrastructure laws** ({infra} passed bills): Regulations governing the physical
+      and digital infrastructure supporting AI
+
+    States concerned about these specific issues retain regulatory authority—at least under the current
+    order's framework.
+    """)
+
+    # Targeted vs Protected visualization
+    targeted_data = {
+        'Category': ['Nondiscrimination', 'Notice/Disclosure', 'Assessments', 'Child Safety', 'Gov Procurement', 'Infrastructure'],
+        'Count': [nondiscrim_count, notice_count, assess_count, child_safety, gov_proc, infra],
+        'Type': ['Targeted', 'Targeted', 'Targeted', 'Protected', 'Protected', 'Protected']
+    }
+    targeted_df = pd.DataFrame(targeted_data)
+
+    fig_targeted = px.bar(
+        targeted_df,
+        x='Category',
+        y='Count',
+        color='Type',
+        color_discrete_map={'Targeted': TARGETED_COLOR, 'Protected': PROTECTED_COLOR},
+        title="Targeted vs. Protected Categories in Passed Legislation",
+        barmode='group'
+    )
+    fig_targeted.update_layout(height=350)
+    st.plotly_chart(fig_targeted, use_container_width=True, key="findings_targeted_bar")
+
+    st.markdown("---")
+
+    # Section 7: What's Next
+    st.markdown("## What Comes Next")
+
+    st.markdown("""
+    The executive order sets a **30-day deadline** for the AI Litigation Task Force and **90 days**
+    for Commerce Department evaluation. By March 2026, we'll have a clearer picture of which specific
+    laws face challenge.
+
+    ### Three Scenarios to Watch
+
+    **1. The Colorado Test Case**
+
+    With SB205 explicitly named, Colorado will likely be the first battleground. The state's attorney
+    general has already signaled intent to defend the law. How federal courts interpret the preemption
+    question will set precedent for every other state.
+
+    **2. The Healthcare Collision**
+
+    As AI-driven claim denials become a national story, the tension between federal preemption and
+    patient protection will intensify.
+
+    **3. The Broadband Leverage**
+
+    The order's threat to withhold federal broadband funding creates a pressure point beyond litigation.
+    States dependent on federal infrastructure dollars may face difficult choices about which AI
+    regulations to maintain.
+    """)
+
+    st.markdown("---")
+
+    # Conclusions
+    st.markdown("## Key Takeaways")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.info("""
+        **The impact will be uneven**
+
+        California, Maryland, and Virginia face far greater exposure than most states—but every
+        state with AI legislation should be evaluating its risk.
+        """)
+
+    with col2:
+        st.warning("""
+        **Healthcare is the flashpoint**
+
+        More than any other sector, healthcare AI transparency laws are in the crosshairs of
+        federal preemption efforts.
+        """)
+
+    with col3:
+        st.error("""
+        **This isn't over**
+
+        With {0} high-exposure bills pending, the federal-state tension over AI governance
+        is just beginning.
+        """.format(len(pending_high)))
+
+    st.markdown("---")
+    st.caption("Use the other tabs above to explore the full dataset and conduct your own analysis.")
+
 
 # ============================================================================
-# TAB 2: SUBJECT AREAS (NEW - replaces old position)
+# TAB: SUBJECT AREAS
 # ============================================================================
 
 def render_subject_areas_tab(df):
@@ -1470,9 +1750,9 @@ def main():
     if len(filtered_df) < len(df):
         st.caption(f"Showing {len(filtered_df)} of {len(df)} bills based on filters")
 
-    # Create tabs (reordered with Subject Areas prominent)
+    # Create tabs (Key Findings as landing page, Overview removed)
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Overview",
+        "Key Findings",
         "Subject Areas",
         "Federal Preemption Risk",
         "Trends",
@@ -1482,7 +1762,7 @@ def main():
     ])
 
     with tab1:
-        render_overview_tab(filtered_df, df)
+        render_key_findings_tab(filtered_df)
 
     with tab2:
         render_subject_areas_tab(filtered_df)
